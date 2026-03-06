@@ -1,0 +1,13 @@
+# Ignorar el entorno virtual local
+venv/
+__pycache__/
+
+# Ignorar la llave secreta (NUNCA subir esto a internet)
+.env
+
+# Ignorar archivos de cotizaciones generados
+*.xlsx
+~$*.xlsx
+
+# Ignorar archivos temporales de Windows
+Thumbs.db
