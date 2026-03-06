@@ -1,6 +1,6 @@
 import streamlit as st
 import os
-from traductor_ia import analizar_reporte_tecnico
+from traductor_ia import analizar_reporte_tecnico, analizar_audio_tecnico
 from generador_excel import crear_excel_cotizacion
 from datetime import datetime
 
@@ -68,16 +68,18 @@ if opcion == "📦 Crear Cotización":
         margen_manual = st.slider("Margen de Utilidad Sugerido (%)", 0, 100, 30)
         
     if st.button("🚀 PROCESAR CON IA Y GENERAR EXCEL"):
-        if not reporte_texto and not audio_file:
-            st.error("Por favor, ingrese un reporte de texto o suba un archivo de audio.")
-        else:
             with st.spinner("🧠 KVANetworks IA trabajando..."):
                 try:
-                    # 1. Ejecutar IA
-                    datos = analizar_reporte_tecnico(reporte_texto)
-                    
-                    # Forzamos el margen al que eligió el usuario en el slider si lo desea, 
-                    # pero la IA ya sugirió uno en 'datos.sugerencia_margen'
+                    # 1. Ejecutar IA (Texto o Audio)
+                    if audio_file:
+                        # Guardar temporalmente para que Gemini pueda leerlo
+                        temp_path = f"temp_{audio_file.name}"
+                        with open(temp_path, "wb") as f:
+                            f.write(audio_file.getbuffer())
+                        datos = analizar_audio_tecnico(temp_path)
+                        os.remove(temp_path) # Limpiar
+                    else:
+                        datos = analizar_reporte_tecnico(reporte_texto)
                     
                     st.success("¡Análisis completado!")
                     

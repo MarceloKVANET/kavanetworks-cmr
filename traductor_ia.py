@@ -80,6 +80,43 @@ Ah, y separar unos 3 rollos de cable UTP para exterior por si las moscas, y cana
 Para la mano de obra calcúlale unos 3 días de trabajo para 2 técnicos.
 """
 
+def analizar_audio_tecnico(ruta_audio: str) -> LevantamientoTecnico:
+    """
+    Sube un archivo de audio a Gemini y extrae los materiales con el cerebro de costos.
+    """
+    client = genai.Client()
+    
+    # Subir archivo
+    archivo_subido = client.files.upload(file=ruta_audio)
+    
+    prompt_audio = """
+    Escucha atentamente este audio del técnico en terreno.
+    Debes identificar el proyecto y desglosar todos los puntos de red, cámaras o servicios mencionados.
+    Usa el CEREBRO DE COSTOS para calcular los precios unitarios compuestos.
+    """
+    
+    respuesta = client.models.generate_content(
+        model='gemini-2.5-flash',
+        contents=[prompt_audio, archivo_subido],
+        config={
+            'response_mime_type': 'application/json',
+            'response_schema': LevantamientoTecnico,
+            'system_instruction': """
+Eres un asistente experto en redes, electricidad y sistemas CCTV. 
+Trabajas para la empresa KVANetworks.
+Tu trabajo es escuchar la nota de voz del técnico y extraer la información estructurada.
+**CEREBRO DE COSTOS (CRITICAL)**: 
+Si menciona 'Puntos de red' o similar, calcula el costo total (cable + conectores + mano de obra + certificación) y ponlo como Precio Unitario.
+""",
+            'temperature': 0.1
+        },
+    )
+    
+    if respuesta.parsed:
+        return respuesta.parsed
+    else:
+        raise Exception("La IA no pudo procesar el audio correctamente")
+
 if __name__ == "__main__":
     # Solo ejecutamos esto si tenemos la llave configurada
     if not os.environ.get("GEMINI_API_KEY"):
