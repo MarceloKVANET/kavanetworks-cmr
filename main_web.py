@@ -102,8 +102,8 @@ if opcion == "📦 Crear Cotización":
         # Opción de Audio (Simulada en esta fase de interfaz)
         audio_file = st.file_uploader("📥 O subir nota de voz del técnico", type=['mp3', 'wav', 'm4a'])
         if audio_file:
+            st.success(f"✅ Archivo '{audio_file.name}' listo para procesar ({audio_file.size/1024:.1f} KB)")
             st.audio(audio_file)
-            st.warning("Módulo de procesamiento de audio cargado. Listo para análisis.")
 
     with col2:
         st.write("Configuración de Cotización")
