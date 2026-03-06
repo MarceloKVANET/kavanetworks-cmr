@@ -90,9 +90,14 @@ def analizar_audio_tecnico(ruta_audio: str) -> LevantamientoTecnico:
     archivo_subido = client.files.upload(file=ruta_audio)
     
     prompt_audio = """
-    Escucha atentamente este audio del técnico en terreno.
-    Debes identificar el proyecto y desglosar todos los puntos de red, cámaras o servicios mencionados.
-    Usa el CEREBRO DE COSTOS para calcular los precios unitarios compuestos.
+    Escucha con extrema atención esta nota de voz técnica de KVANetworks.
+    Tu objetivo es capturar CADA material, equipo y servicio mencionado, sin omitir ninguno.
+    
+    REGLAS DE ORO:
+    1. Si el técnico dice 'puntos de red', usa el CEREBRO DE COSTOS para el desglose automático.
+    2. Si menciona distancias (ej. '40 metros'), úsalas para calcular la cantidad de cable necesaria.
+    3. Si el audio es ruidoso, intenta inferir por contexto técnico (ej. si habla de cámaras, probablemente necesite conectores RJ45 o baluns).
+    4. Procesa los precios en CLP NETOS.
     """
     
     respuesta = client.models.generate_content(
@@ -102,11 +107,11 @@ def analizar_audio_tecnico(ruta_audio: str) -> LevantamientoTecnico:
             'response_mime_type': 'application/json',
             'response_schema': LevantamientoTecnico,
             'system_instruction': """
-Eres un asistente experto en redes, electricidad y sistemas CCTV. 
-Trabajas para la empresa KVANetworks.
-Tu trabajo es escuchar la nota de voz del técnico y extraer la información estructurada.
+Eres un Ingeniero de Costos experto de KVANetworks. 
+Tu especialidad es teleco, CCTV y electricidad.
+Analizas audios de técnicos en terreno y generas una lista de materiales perfecta para cotizar.
 **CEREBRO DE COSTOS (CRITICAL)**: 
-Si menciona 'Puntos de red' o similar, calcula el costo total (cable + conectores + mano de obra + certificación) y ponlo como Precio Unitario.
+Para cada ítem complejo (como un punto de red), calcula el precio unitario sumando: cable + conectores + accesorios + mano de obra (incluyendo tendido, punchado y certificación).
 """,
             'temperature': 0.1
         },
@@ -115,7 +120,7 @@ Si menciona 'Puntos de red' o similar, calcula el costo total (cable + conectore
     if respuesta.parsed:
         return respuesta.parsed
     else:
-        raise Exception("La IA no pudo procesar el audio correctamente")
+        raise Exception("La IA no pudo procesar el audio correctamente. Intenta hablar más claro o subir un archivo con menos ruido.")
 
 if __name__ == "__main__":
     # Solo ejecutamos esto si tenemos la llave configurada

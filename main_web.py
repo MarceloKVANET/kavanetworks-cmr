@@ -68,6 +68,11 @@ if opcion == "📦 Crear Cotización":
         margen_manual = st.slider("Margen de Utilidad Sugerido (%)", 0, 100, 30)
         
     if st.button("🚀 PROCESAR CON IA Y GENERAR EXCEL"):
+        if not cliente_nombre:
+            st.error("⚠️ El nombre del Cliente/Empresa es OBLIGATORIO para generar la cotización.")
+        elif not reporte_texto and not audio_file:
+            st.error("⚠️ Por favor, ingrese un reporte de texto o suba un archivo de audio.")
+        else:
             with st.spinner("🧠 KVANetworks IA trabajando..."):
                 try:
                     # 1. Ejecutar IA (Texto o Audio)
@@ -95,9 +100,9 @@ if opcion == "📦 Crear Cotización":
                     
                     st.write(f"**Justificación IA:** {datos.justificacion_margen}")
                     
-                    # 2. Generar Excel
+                    # 2. Generar Excel (Usando el margen manual del slider)
                     filename = f"cotizacion_{cliente_nombre.replace(' ', '_')}_{datetime.now().strftime('%Y%m%d')}.xlsx"
-                    ruta = crear_excel_cotizacion(datos, filename)
+                    ruta = crear_excel_cotizacion(datos, filename, margen_override=margen_manual/100)
                     
                     # 3. Botón de Descarga
                     with open(ruta, "rb") as file:

@@ -3,7 +3,7 @@ from openpyxl.styles import Font, Alignment, Border, Side, PatternFill
 from datetime import datetime
 import os
 
-def crear_excel_cotizacion(datos, nombre_archivo="cotizacion_kvanetworks.xlsx"):
+def crear_excel_cotizacion(datos, nombre_archivo="cotizacion_kvanetworks.xlsx", margen_override=None):
     """
     Toma los datos extraídos por la IA y crea un archivo Excel profesional.
     """
@@ -12,6 +12,7 @@ def crear_excel_cotizacion(datos, nombre_archivo="cotizacion_kvanetworks.xlsx"):
     ws.title = "Cotización"
 
     # --- CONFIGURACIÓN DE ESTILOS ---
+    # ... (omitido por brevedad en la instrucción pero mantenido en el archivo)
     azul_kvanetworks = "003366"
     gris_claro = "F2F2F2"
     
@@ -57,8 +58,8 @@ def crear_excel_cotizacion(datos, nombre_archivo="cotizacion_kvanetworks.xlsx"):
         celda.border = borde_fino
         celda.alignment = Alignment(horizontal="center")
 
-    # Margen global sugerido por la IA
-    margen_base = datos.sugerencia_margen
+    # Margen: Usar el manual si existe, si no el de la IA
+    margen_base = margen_override if margen_override is not None else datos.sugerencia_margen
 
     # Llenar la tabla
     fila_actual = 8
