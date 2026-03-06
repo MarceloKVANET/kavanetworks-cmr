@@ -94,32 +94,35 @@ def analizar_audio_tecnico(ruta_audio: str, lista_precios_actual: str = "") -> L
     archivo_subido = client.files.upload(file=ruta_audio)
     
     prompt_audio = """
-    Escucha con extrema atención esta nota de voz técnica de KVANetworks.
-    Tu objetivo es capturar CADA material, equipo y servicio mencionado, sin omitir ninguno.
+    Este audio es una nota de voz de un técnico de KVANetworks en Chile (español es-CL).
+    El técnico utiliza términos técnicos como 'puntos de red', 'rack', 'UPS', 'canalización', 'tendido', 'patch panel', etc.
     
-    REGLAS DE ORO:
-    1. Si el técnico dice 'puntos de red', usa el CEREBRO DE COSTOS para el desglose automático.
-    2. Si menciona distancias (ej. '40 metros'), úsalas para calcular la cantidad de cable necesaria.
-    3. Si el audio es ruidoso, intenta inferir por contexto técnico (ej. si habla de cámaras, probablemente necesite conectores RJ45 o baluns).
-    4. Procesa los precios en CLP NETOS.
+    Tu tarea:
+    1. Escucha con extrema atención ignorando el ruido de fondo.
+    2. Captura CADA material, equipo y servicio mencionado.
+    3. Si el técnico dice 'puntos de red', aplica el CEREBRO DE COSTOS para el desglose.
+    4. Ignora muletillas y asume que el idioma es estrictamente ESPAÑOL.
+    5. Procesa todo en pesos chilenos (CLP) NETOS.
     """
     
     respuesta = client.models.generate_content(
-        model='gemini-2.5-flash',
+        model='gemini-2.0-flash',
         contents=[prompt_audio, archivo_subido],
         config={
             'response_mime_type': 'application/json',
             'response_schema': LevantamientoTecnico,
-            'system_instruction': """
-Eres un Ingeniero de Costos experto de KVANetworks. 
-Tu especialidad es teleco, CCTV y electricidad.
-Analizas audios de técnicos en terreno y generas una lista de materiales perfecta para cotizar.
+            'system_instruction': f"""
+Eres un Ingeniero de Costos experto de KVANetworks en Chile. 
+Tu trabajo es escuchar audios técnicos en ESPAÑOL (es-CL) y extraer materiales estructurados.
+
+**CONTEXTO TÉCNICO CHILENO**: 
+Reconoce términos como 'puntos de red cat 6', 'fibra óptica', 'UPS', 'módulos', 'bastidor', 'escalerilla'.
 
 **CATÁLOGO DE PRECIOS REALES**:
 {lista_precios_actual}
 
 **CEREBRO DE COSTOS (CRITICAL)**: 
-Para cada ítem complejo (como un punto de red), calcula el precio unitario sumando: cable + conectores + accesorios + mano de obra (incluyendo tendido, punchado y certificación).
+Para ítems complejos (ej. punto de red), calcula el precio unitario final sumando: cable (según los metros dichos), conectores, faceplate, y mano de obra de tendido y punchado.
 """,
             'temperature': 0.1
         },
