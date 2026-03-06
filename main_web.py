@@ -3,6 +3,10 @@ import os
 from traductor_ia import analizar_reporte_tecnico, analizar_audio_tecnico
 from generador_excel import crear_excel_cotizacion
 from datetime import datetime
+import database as db
+
+# Inicializar DB al arrancar
+db.inicializar_db()
 
 # --- CONFIGURACIÓN DE PÁGINA ---
 st.set_page_config(
@@ -38,7 +42,7 @@ st.subheader("Sistema Inteligente de Cotizaciones: Telecomunicaciones & Electric
 with st.sidebar:
     st.image("https://img.icons8.com/ios-filled/100/04447c/infinity.png", width=100) # Placeholder logo
     st.title("Panel de Control")
-    opcion = st.radio("Menu", ["📦 Crear Cotización", "👥 Clientes", "📊 Historial"])
+    opcion = st.radio("Menu", ["📦 Crear Cotización", "🛠️ Inventario & Precios", "👥 Clientes", "📊 Historial"])
     st.divider()
     st.info("Logueado como: Marcelo (Admin)")
 
@@ -114,6 +118,44 @@ if opcion == "📦 Crear Cotización":
                         )
                 except Exception as e:
                     st.error(f"Falla en el sistema: {e}")
+
+# --- MÓDULO INVENTARIO & PRECIOS ---
+elif opcion == "🛠️ Inventario & Precios":
+    st.header("🛠️ Gestión de Inventario y Precios Base")
+    
+    with st.expander("➕ Agregar Nuevo Producto/Servicio"):
+        with st.form("nuevo_producto"):
+            col1, col2 = st.columns(2)
+            with col1:
+                p_nombre = st.text_input("Nombre del Producto", placeholder="Ej: Cámara IP Domo 4MP")
+                p_unidad = st.selectbox("Unidad", ["unidades", "mt", "puntos", "global", "día/técnico"])
+            with col2:
+                p_precio = st.number_input("Precio Neto ($)", min_value=0.0, step=100.0)
+                p_desc = st.text_input("Descripción Corta")
+            
+            if st.form_submit_button("Guardar en Catálogo"):
+                if p_nombre:
+                    db.agregar_producto(p_nombre, p_desc, p_precio, p_unidad)
+                    st.success(f"¡{p_nombre} agregado correctamente!")
+                    st.rerun()
+                else:
+                    st.error("El nombre es obligatorio")
+
+    st.write("### Catálogo de Precios Actual")
+    productos = db.listar_productos()
+    if productos:
+        tabla_prod = []
+        for p in productos:
+            tabla_prod.append({
+                "ID": p["id"],
+                "Nombre": p["nombre"],
+                "Descripción": p["descripcion"],
+                "Precio Neto": f"${p['precio_neto']:,.0f}",
+                "Unidad": p["unidad"]
+            })
+        st.table(tabla_prod)
+    else:
+        st.info("Aún no hay productos cargados. Usa el formulario de arriba para empezar.")
 
 # --- MÓDULO CLIENTES (PRÓXIMAMENTE) ---
 elif opcion == "👥 Clientes":
