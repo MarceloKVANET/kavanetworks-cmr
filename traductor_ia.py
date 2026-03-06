@@ -25,7 +25,7 @@ class LevantamientoTecnico(BaseModel):
 
 # --- 2. CONFIGURAR EL MOTOR DE IA ---
 # Para usar esto en la vida real, necesitarás una API Key de Google (es gratis para empezar).
-def analizar_reporte_tecnico(texto_del_tecnico: str) -> LevantamientoTecnico:
+def analizar_reporte_tecnico(texto_del_tecnico: str, lista_precios_actual: str = "") -> LevantamientoTecnico:
     """
     Toma el texto desordenado del técnico, consulta a Gemini, y devuelve un objeto estructurado.
     """
@@ -49,6 +49,10 @@ Si el técnico menciona un sistema compuesto (ej. 'Punto de red' o 'Punto de Cá
 
 Asegúrate de deducir unidades lógicas. Todos los cálculos en CLP NETOS.
 También debes sugerir un margen de utilidad comercial (ej. 30% para KVANetworks).
+
+**CATÁLOGO DE PRECIOS REALES (SI EXISTE)**:
+{lista_precios_actual}
+Si un producto del catálogo coincide con lo solicitado, USA EL NOMBRE Y PRECIO EXACTO del catálogo.
 """
     
     # Llamamos a Gemini (usaremos el modelo flash, que es rapidísimo y muy bueno para texto lógico)
@@ -80,7 +84,7 @@ Ah, y separar unos 3 rollos de cable UTP para exterior por si las moscas, y cana
 Para la mano de obra calcúlale unos 3 días de trabajo para 2 técnicos.
 """
 
-def analizar_audio_tecnico(ruta_audio: str) -> LevantamientoTecnico:
+def analizar_audio_tecnico(ruta_audio: str, lista_precios_actual: str = "") -> LevantamientoTecnico:
     """
     Sube un archivo de audio a Gemini y extrae los materiales con el cerebro de costos.
     """
@@ -110,6 +114,10 @@ def analizar_audio_tecnico(ruta_audio: str) -> LevantamientoTecnico:
 Eres un Ingeniero de Costos experto de KVANetworks. 
 Tu especialidad es teleco, CCTV y electricidad.
 Analizas audios de técnicos en terreno y generas una lista de materiales perfecta para cotizar.
+
+**CATÁLOGO DE PRECIOS REALES**:
+{lista_precios_actual}
+
 **CEREBRO DE COSTOS (CRITICAL)**: 
 Para cada ítem complejo (como un punto de red), calcula el precio unitario sumando: cable + conectores + accesorios + mano de obra (incluyendo tendido, punchado y certificación).
 """,

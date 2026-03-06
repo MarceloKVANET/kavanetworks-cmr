@@ -38,15 +38,54 @@ st.markdown("""
 st.title("📶 KVANetworks CRM")
 st.subheader("Sistema Inteligente de Cotizaciones: Telecomunicaciones & Electricidad")
 
-# --- BARRA LATERAL (GESTIÓN) ---
+# --- AUTENTICACIÓN ---
+if 'logueado' not in st.session_state:
+    st.session_state.logueado = False
+    st.session_state.usuario = None
+    st.session_state.rol = None
+
 with st.sidebar:
-    st.image("https://img.icons8.com/ios-filled/100/04447c/infinity.png", width=100) # Placeholder logo
-    st.title("Panel de Control")
-    opcion = st.radio("Menu", ["📦 Crear Cotización", "🛠️ Inventario & Precios", "👥 Clientes", "📊 Historial"])
-    st.divider()
-    st.info("Logueado como: Marcelo (Admin)")
+    st.image("https://img.icons8.com/ios-filled/100/04447c/infinity.png", width=100)
+    st.title("Acceso KVANetworks")
+    
+    if not st.session_state.logueado:
+        with st.form("login_form"):
+            user = st.text_input("Usuario")
+            pw = st.text_input("Contraseña", type="password")
+            if st.form_submit_button("Ingresar"):
+                if user == "admin" and pw == "kva2026":
+                    st.session_state.logueado = True
+                    st.session_state.usuario = "Marcelo"
+                    st.session_state.rol = "admin"
+                    st.rerun()
+                elif user == "tecnico" and pw == "terreno2026":
+                    st.session_state.logueado = True
+                    st.session_state.usuario = "Técnico"
+                    st.session_state.rol = "tecnico"
+                    st.rerun()
+                else:
+                    st.error("Credenciales incorrectas")
+    else:
+        st.write(f"Hola, **{st.session_state.usuario}**")
+        st.write(f"Rol: `{st.session_state.rol.upper()}`")
+        if st.button("Cerrar Sesión"):
+            st.session_state.logueado = False
+            st.rerun()
+        
+        st.divider()
+        st.title("Panel de Control")
+        opciones_menu = ["📦 Crear Cotización"]
+        if st.session_state.rol == "admin":
+            opciones_menu += ["🛠️ Inventario & Precios", "👥 Clientes", "📊 Historial"]
+        
+        opcion = st.radio("Menu", opciones_menu)
 
 # --- MÓDULO PRINCIPAL: CREAR COTIZACIÓN ---
+# --- MÓDULO PRINCIPAL: CREAR COTIZACIÓN ---
+if not st.session_state.logueado:
+    st.warning("🔒 Por favor, inicie sesión en la barra lateral para usar el sistema.")
+    st.stop()
+
 if opcion == "📦 Crear Cotización":
     st.header("📝 Nuevo Levantamiento Técnico")
     
@@ -79,16 +118,20 @@ if opcion == "📦 Crear Cotización":
         else:
             with st.spinner("🧠 KVANetworks IA trabajando..."):
                 try:
+                    # 0. Preparar catálogo de precios para la IA
+                    productos = db.listar_productos()
+                    contexto_precios = "\n".join([f"- {p['nombre']}: ${p['precio_neto']} por {p['unidad']}" for p in productos])
+                    
                     # 1. Ejecutar IA (Texto o Audio)
                     if audio_file:
                         # Guardar temporalmente para que Gemini pueda leerlo
                         temp_path = f"temp_{audio_file.name}"
                         with open(temp_path, "wb") as f:
                             f.write(audio_file.getbuffer())
-                        datos = analizar_audio_tecnico(temp_path)
+                        datos = analizar_audio_tecnico(temp_path, lista_precios_actual=contexto_precios)
                         os.remove(temp_path) # Limpiar
                     else:
-                        datos = analizar_reporte_tecnico(reporte_texto)
+                        datos = analizar_reporte_tecnico(reporte_texto, lista_precios_actual=contexto_precios)
                     
                     st.success("¡Análisis completado!")
                     
