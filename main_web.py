@@ -61,57 +61,60 @@ if not st.session_state.logueado:
 if opcion == "📦 Crear Cotización":
     st.title("📝 Nuevo Levantamiento")
     
-    col_input, col_config = st.columns([1.5, 1], gap="large")
+    # 1. Widgets principales FUERA de columnas para máxima compatibilidad
+    st.subheader("1. Ingrese Datos")
     
-    with col_input:
-        st.subheader("1. Ingrese Datos")
-        # Widget de texto
-        reporte_texto = st.text_area("Reporte escrito", height=150, placeholder="Escriba aquí...", key="txt_input")
-        
-        st.divider()
-        # Uploader
-        audio_file = st.file_uploader("🎙️ Subir Nota de Voz", type=['mp3', 'wav', 'm4a'], key="file_input")
-        
-        # PERSISTENCIA MANUAL: Guardamos en session_state si el archivo existe
-        if audio_file is not None:
-            st.session_state['last_audio'] = audio_file
-            st.session_state['last_audio_bytes'] = audio_file.getvalue()
-            st.success(f"✅ ARCHIVO LISTO: {audio_file.name}")
-            st.audio(st.session_state['last_audio_bytes'])
-        elif 'last_audio' in st.session_state:
-            # Si desaparece en el rerun del botón, lo recordamos
-            st.info(f"🔄 Usando audio en memoria: {st.session_state['last_audio'].name}")
+    # Reporte de texto
+    reporte_texto = st.text_area("Reporte escrito", height=150, placeholder="Escriba aquí...", key="txt_input")
+    
+    st.divider()
+    
+    # Uploader
+    audio_file = st.file_uploader("🎙️ Subir Nota de Voz", type=['mp3', 'wav', 'm4a'], key="file_input")
+    
+    # Lógica de persistencia de audio inmediata
+    if audio_file is not None:
+        st.session_state['audio_data'] = audio_file.getvalue()
+        st.session_state['audio_name'] = audio_file.name
+        st.success(f"✅ ARCHIVO LISTO PARA PROCESAR: {audio_file.name}")
+        st.audio(st.session_state['audio_data'])
 
-    with col_config:
-        st.subheader("2. Configuración")
+    st.divider()
+    
+    st.subheader("2. Configuración")
+    col1, col2 = st.columns(2)
+    with col1:
         cliente_nombre = st.text_input("🏢 Empresa/Cliente", key="cli_input")
+    with col2:
         margen = st.slider("Margen (%)", 10, 100, 30)
-        
-        st.write("---")
-        btn_procesar = st.button("🚀 GENERAR COTIZACIÓN", use_container_width=True)
+    
+    st.write("---")
+    btn_procesar = st.button("🚀 GENERAR COTIZACIÓN", type="primary", use_container_width=True)
 
     # --- LÓGICA DE PROCESAMIENTO ---
     if btn_procesar:
-        # Recuperar datos de session_state si el widget falló
-        final_audio_bytes = st.session_state.get('last_audio_bytes')
-        final_text = reporte_texto.strip()
+        # Recuperamos datos
+        final_text = reporte_texto.strip() if reporte_texto else ""
+        final_audio = st.session_state.get('audio_data')
+        
+        # DEBUG PARA EL USUARIO
+        st.write("---")
+        st.write("**🔍 Debug de Entrada:**")
+        st.write(f"- Texto escrito: {'SÍ' if final_text else 'NO'}")
+        st.write(f"- Audio en sesión: {'SÍ' if final_audio else 'NO'}")
         
         if not cliente_nombre:
             st.warning("⚠️ Ingresa el nombre del cliente.")
-        elif not final_text and final_audio_bytes is None:
-            st.error("❌ ERROR: El sistema no detectó ni texto ni audio.")
-            st.write("---")
-            st.write("**Reporte de Estado:**")
-            st.write(f"- Texto: {len(final_text)} caracteres.")
-            st.write(f"- Audio: {'Cargado' if final_audio_bytes else 'Vacío'}")
+        elif not final_text and final_audio is None:
+            st.error("❌ ERROR: El sistema no detectó datos de entrada.")
         else:
             with st.spinner("⏳ KVANetworks IA Pro analizando..."):
                 try:
-                    if final_audio_bytes:
-                        st.info("🎤 Procesando Nota de Voz...")
+                    if final_audio:
+                        st.info(f"🎤 Procesando Audio: {st.session_state.get('audio_name')}")
                         temp_path = f"temp_{int(datetime.now().timestamp())}.mp3"
                         with open(temp_path, "wb") as f:
-                            f.write(final_audio_bytes)
+                            f.write(final_audio)
                         try:
                             datos = analizar_audio_tecnico(temp_path)
                         finally:
@@ -130,5 +133,5 @@ if opcion == "📦 Crear Cotización":
                         st.download_button("📥 DESCARGAR EXCEL", f, file_name=nombre_xlsx)
                         
                 except Exception as e:
-                    st.error("❌ ERROR CRÍTICO")
+                    st.error("❌ ERROR DE PROCESAMIENTO")
                     st.exception(e)
