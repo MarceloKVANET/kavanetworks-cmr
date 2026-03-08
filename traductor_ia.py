@@ -1,4 +1,5 @@
 import os
+import time
 from google import genai
 from pydantic import BaseModel, Field
 from dotenv import load_dotenv
@@ -23,12 +24,19 @@ class LevantamientoTecnico(BaseModel):
     justificacion_margen: str = Field(description="Breve explicación de por qué sugieres ese margen")
 
 # --- 2. CONFIGURAR EL MOTOR DE IA (GEMINI 1.5 PRO) ---
+def get_client():
+    """Inicializa el cliente de GenAI con la API Key."""
+    api_key = os.environ.get("GEMINI_API_KEY")
+    if not api_key:
+        raise ValueError("No se encontró la variable de entorno GEMINI_API_KEY")
+    return genai.Client(api_key=api_key)
+
 def analizar_reporte_tecnico(texto_del_tecnico: str, lista_precios_actual: str = "") -> LevantamientoTecnico:
     """
     Toma el texto del técnico y devuelve un objeto estructurado usando Gemini 1.5 Pro.
     """
     print("\n[KVANetworks CRM] Procesando reporte con Gemini 1.5 Pro...\n")
-    client = genai.Client()
+    client = get_client()
     
     prompt_sistema = f"""
 Eres un asistente experto en redes, electricidad y sistemas CCTV para KVANetworks Chile.
@@ -65,14 +73,27 @@ def analizar_audio_tecnico(ruta_audio: str, lista_precios_actual: str = "") -> L
     Sube un audio a Gemini 1.5 Pro y extrae materiales estructurados.
     """
     print(f"\n[KVANetworks CRM] Analizando audio con Gemini 1.5 Pro...\n")
-    client = genai.Client()
+    client = get_client()
     
     if not os.path.exists(ruta_audio):
         raise FileNotFoundError(f"Archivo no encontrado: {ruta_audio}")
 
     archivo_subido = None
     try:
+        # 1. Subir archivo
+        print("📡 Subiendo audio...")
         archivo_subido = client.files.upload(file=ruta_audio)
+        
+        # 2. ESPERAR A QUE ESTÉ ACTIVO (Muy importante para Pro / Flash 2.0)
+        print("⏳ Esperando que Gemini procese el archivo...")
+        while archivo_subido.state.name == "PROCESSING":
+            time.sleep(2)
+            archivo_subido = client.files.get(name=archivo_subido.name)
+        
+        if archivo_subido.state.name == "FAILED":
+            raise Exception("El procesamiento del audio en la nube de Google falló.")
+
+        print("✅ Archivo listo. Analizando contenido...")
         
         prompt_sistema = f"""
 Eres un Ingeniero de Costos experto de KVANetworks Chile. 
@@ -102,14 +123,18 @@ Resultados en CLP NETOS. Sugiere margen de utilidad.
         if respuesta.parsed:
             return respuesta.parsed
         else:
-            raise Exception("La IA Pro no pudo procesar el audio correctamente")
+            raise Exception("La IA Pro no pudo procesar el audio correctamente después de escucharlo")
 
     finally:
         if archivo_subido:
-            client.files.delete(name=archivo_subido.name)
+            try:
+                client.files.delete(name=archivo_subido.name)
+            except:
+                pass
 
 if __name__ == "__main__":
-    if not os.environ.get("GEMINI_API_KEY"):
+    api_key = os.environ.get("GEMINI_API_KEY")
+    if not api_key:
         print("⚠️ ERROR: Falta GEMINI_API_KEY.")
     else:
-        print("Motor Gemini 1.5 Pro listo.")
+        print(f"Motor Gemini 1.5 Pro listo (Key: {api_key[:5]}...)")
