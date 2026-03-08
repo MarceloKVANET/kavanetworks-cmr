@@ -3,12 +3,9 @@ import os
 from datetime import datetime
 import database as db
 
-# --- CARGAR API KEY ---
+# --- SETUP INICIAL ---
 if "GEMINI_API_KEY" in st.secrets:
     os.environ["GEMINI_API_KEY"] = st.secrets["GEMINI_API_KEY"]
-elif os.path.exists(".env"):
-    from dotenv import load_dotenv
-    load_dotenv()
 
 from traductor_ia import analizar_reporte_tecnico, analizar_audio_tecnico 
 from generador_excel import crear_excel_cotizacion
@@ -17,121 +14,99 @@ db.inicializar_db()
 
 st.set_page_config(page_title="KVANetworks CRM", page_icon="📶", layout="wide")
 
-# --- ESTADO DE SESIÓN ---
+# --- LOGIN & SESIÓN ---
 if 'logueado' not in st.session_state:
     st.session_state.logueado = False
-    st.session_state.usuario = None
-    st.session_state.rol = None
 
-# --- BARRA LATERAL ---
 with st.sidebar:
     st.title("KVANetworks")
     if not st.session_state.logueado:
-        with st.form("login_form"):
-            user = st.text_input("Usuario")
-            pw = st.text_input("Contraseña", type="password")
-            if st.form_submit_button("Ingresar"):
-                if user == "admin" and pw == "kva2026":
+        with st.form("login"):
+            u = st.text_input("Usuario")
+            p = st.text_input("Clave", type="password")
+            if st.form_submit_button("Entrar"):
+                if (u == "admin" and p == "kva2026") or (u == "tecnico" and p == "terreno2026"):
                     st.session_state.logueado = True
-                    st.session_state.usuario = "Marcelo"
-                    st.session_state.rol = "admin"
+                    st.session_state.rol = "admin" if u == "admin" else "tecnico"
                     st.rerun()
-                elif user == "tecnico" and pw == "terreno2026":
-                    st.session_state.logueado = True
-                    st.session_state.usuario = "Técnico"
-                    st.session_state.rol = "tecnico"
-                    st.rerun()
-                else:
-                    st.error("Error")
     else:
-        st.success(f"Hola {st.session_state.usuario}")
-        opciones_menu = ["📦 Crear Cotización"]
-        if st.session_state.rol == "admin":
-            opciones_menu += ["🛠️ Catálogo", "📊 Historial"]
-        opcion = st.radio("Menú", opciones_menu)
-        if st.button("Cerrar Sesión"):
+        st.write(f"Conectado como {st.session_state.rol}")
+        if st.button("Salir"):
             st.session_state.logueado = False
             st.rerun()
 
 if not st.session_state.logueado:
-    st.info("🔒 Por favor, inicie sesión.")
+    st.info("🔒 Inicie sesión")
     st.stop()
 
-# --- MÓDULO: CREAR COTIZACIÓN ---
-if opcion == "📦 Crear Cotización":
-    st.title("📝 Nuevo Levantamiento")
-    
-    # 1. Widgets principales FUERA de columnas para máxima compatibilidad
-    st.subheader("1. Ingrese Datos")
-    
-    # Reporte de texto
-    reporte_texto = st.text_area("Reporte escrito", height=150, placeholder="Escriba aquí...", key="txt_input")
-    
-    st.divider()
-    
-    # Uploader
-    audio_file = st.file_uploader("🎙️ Subir Nota de Voz", type=['mp3', 'wav', 'm4a'], key="file_input")
-    
-    # Lógica de persistencia de audio inmediata
-    if audio_file is not None:
-        st.session_state['audio_data'] = audio_file.getvalue()
-        st.session_state['audio_name'] = audio_file.name
-        st.success(f"✅ ARCHIVO LISTO PARA PROCESAR: {audio_file.name}")
-        st.audio(st.session_state['audio_data'])
+# --- MÓDULO COTIZACIÓN ---
+st.title("📝 Generador de Cotizaciones Pro (Gemini 3.1)")
 
-    st.divider()
+# PERSISTENCIA DE DATOS (Solución al error de 'borrado')
+if 'audio_buffer' not in st.session_state:
+    st.session_state.audio_buffer = None
+if 'audio_name' not in st.session_state:
+    st.session_state.audio_name = None
+
+col1, col2 = st.columns([1.5, 1])
+
+with col1:
+    st.subheader("Entrada de Datos")
+    texto_tecnico = st.text_area("Descripción del trabajo", height=150, key="texto_input")
     
-    st.subheader("2. Configuración")
-    col1, col2 = st.columns(2)
-    with col1:
-        cliente_nombre = st.text_input("🏢 Empresa/Cliente", key="cli_input")
-    with col2:
-        margen = st.slider("Margen (%)", 10, 100, 30)
+    uploaded_file = st.file_uploader("🎙️ Subir Audio", type=['mp3', 'wav', 'm4a'])
+    if uploaded_file:
+        # Guardamos inmediatamente en la sesión para que no se pierda al pulsar el botón
+        st.session_state.audio_buffer = uploaded_file.getvalue()
+        st.session_state.audio_name = uploaded_file.name
+        st.success(f"✅ Audio grabado en memoria: {uploaded_file.name}")
+        st.audio(st.session_state.audio_buffer)
+
+with col2:
+    st.subheader("Parámetros")
+    cliente = st.text_input("🏢 Empresa/Cliente", placeholder="Nombre del cliente")
+    margen = st.slider("Margen de ganancia (%)", 10, 100, 30)
     
     st.write("---")
-    btn_procesar = st.button("🚀 GENERAR COTIZACIÓN", type="primary", use_container_width=True)
-
-    # --- LÓGICA DE PROCESAMIENTO ---
-    if btn_procesar:
-        # Recuperamos datos
-        final_text = reporte_texto.strip() if reporte_texto else ""
-        final_audio = st.session_state.get('audio_data')
+    if st.button("🚀 PROCESAR CON GEMINI 3.1 PRO", use_container_width=True, type="primary"):
+        txt = texto_tecnico.strip()
+        aud = st.session_state.audio_buffer
         
-        # DEBUG PARA EL USUARIO
-        st.write("---")
-        st.write("**🔍 Debug de Entrada:**")
-        st.write(f"- Texto escrito: {'SÍ' if final_text else 'NO'}")
-        st.write(f"- Audio en sesión: {'SÍ' if final_audio else 'NO'}")
-        
-        if not cliente_nombre:
-            st.warning("⚠️ Ingresa el nombre del cliente.")
-        elif not final_text and final_audio is None:
-            st.error("❌ ERROR: El sistema no detectó datos de entrada.")
+        if not cliente:
+            st.warning("Escriba el nombre del cliente.")
+        elif not txt and not aud:
+            st.error("Error: No hay texto ni audio cargado.")
+            # Diagnóstico visual
+            st.write("---")
+            st.write("**Estado de Memoria:**")
+            st.write(f"Texto: {'SÍ' if txt else 'NO'}")
+            st.write(f"Audio: {'SÍ' if aud else 'NO'}")
         else:
-            with st.spinner("⏳ KVANetworks IA Pro analizando..."):
+            with st.spinner("🧠 Gemini 3.1 Pro analizando el requerimiento..."):
                 try:
-                    if final_audio:
-                        st.info(f"🎤 Procesando Audio: {st.session_state.get('audio_name')}")
-                        temp_path = f"temp_{int(datetime.now().timestamp())}.mp3"
-                        with open(temp_path, "wb") as f:
-                            f.write(final_audio)
+                    if aud:
+                        tmp = f"temp_{int(datetime.now().timestamp())}.mp3"
+                        with open(tmp, "wb") as f: f.write(aud)
                         try:
-                            datos = analizar_audio_tecnico(temp_path)
+                            datos = analizar_audio_tecnico(tmp)
                         finally:
-                            if os.path.exists(temp_path): os.remove(temp_path)
+                            if os.path.exists(tmp): os.remove(tmp)
                     else:
-                        st.info("📝 Procesando Reporte de Texto...")
-                        datos = analizar_reporte_tecnico(final_text)
+                        datos = analizar_reporte_tecnico(txt)
                     
-                    nombre_xlsx = f"cotizacion_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
-                    ruta = crear_excel_cotizacion(datos, nombre_xlsx)
-                    db.guardar_cotizacion_en_bd(datos, ruta)
+                    # Generar y Guardar
+                    file_name = f"cotiz_{datetime.now().strftime('%d%m_%H%M')}.xlsx"
+                    path = crear_excel_cotizacion(datos, file_name, margen_override=(margen/100))
+                    db.guardar_cotizacion_en_bd(datos, path)
                     
-                    st.success("✅ ¡Cotización Generada!")
+                    st.success("¡Éxito! Cotización generada con IA 3.1")
                     st.balloons()
-                    with open(ruta, "rb") as f:
-                        st.download_button("📥 DESCARGAR EXCEL", f, file_name=nombre_xlsx)
-                        
+                    with open(path, "rb") as f:
+                        st.download_button("📥 DESCARGAR EXCEL", f, file_name=file_name)
+                    
+                    # Limpiar buffer tras éxito
+                    st.session_state.audio_buffer = None
+                    
                 except Exception as e:
-                    st.error("❌ ERROR DE PROCESAMIENTO")
+                    st.error("Error en el procesamiento de IA")
                     st.exception(e)

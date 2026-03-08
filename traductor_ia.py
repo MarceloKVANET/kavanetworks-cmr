@@ -2,140 +2,91 @@ import os
 import time
 from google import genai
 from pydantic import BaseModel, Field
-from dotenv import load_dotenv
 
-# Cargaremos las variables de entorno del archivo .env
-load_dotenv()
-if not os.environ.get("GEMINI_API_KEY"):
-    import streamlit as st
-    if "GEMINI_API_KEY" in st.secrets:
-        os.environ["GEMINI_API_KEY"] = st.secrets["GEMINI_API_KEY"]
-
-# --- 1. DEFINIR LA ESTRUCTURA DE LOS DATOS ---
-class ItemMaterial(BaseModel):
-    nombre_material: str = Field(description="Nombre del ítem (ej. 'Punto de red Cat.6 completo').")
-    descripcion_detallada: str = Field(description="Descripción técnica completa que incluye los servicios (ej. tendido, punchado, certificado)")
-    cantidad: float = Field(description="Cantidad total del ítem")
-    unidad_medida: str = Field(description="Unidad (ej. puntos, unidades, mt)")
-    precio_unitario_neto_estimado: float = Field(description="Precio unitario final calculado internamente por la IA sumando todos los componentes necesarios.")
-    justificacion_costo: str = Field(description="Desglose de cómo la IA llegó a ese precio unitario.")
-
-class LevantamientoTecnico(BaseModel):
-    resumen_proyecto: str = Field(description="Un resumen de 1 oración describiendo el objetivo general de la visita")
-    materiales_y_servicios: list[ItemMaterial] = Field(description="Lista detallada de todo lo que solicitó el técnico")
-    notas_adicionales: str = Field(description="Cualquier otra observación importante. Dejar vacío si no hay.")
-    sugerencia_margen: float = Field(description="Porcentaje de margen de utilidad sugerido (ej: 0.3 para 30%)")
-    justificacion_margen: str = Field(description="Breve explicación de por qué sugieres ese margen")
-
-# --- 2. CONFIGURAR EL MOTOR DE IA (GEMINI 1.5 PRO LATEST) ---
-MODEL_ID = 'gemini-1.5-pro-latest' # Cambiado de gemini-1.5-pro para evitar 404
-
+# La API Key se carga desde el entorno (gestionado por main_web.py)
 def get_client():
-    """Inicializa el cliente de GenAI con la API Key."""
     api_key = os.environ.get("GEMINI_API_KEY")
     if not api_key:
-        raise ValueError("No se encontró la variable de entorno GEMINI_API_KEY")
+        import streamlit as st
+        if "GEMINI_API_KEY" in st.secrets:
+            api_key = st.secrets["GEMINI_API_KEY"]
+            os.environ["GEMINI_API_KEY"] = api_key
+        else:
+            raise ValueError("No se encontró la GEMINI_API_KEY en secretos ni entorno.")
     return genai.Client(api_key=api_key)
 
-def analizar_reporte_tecnico(texto_del_tecnico: str, lista_precios_actual: str = "") -> LevantamientoTecnico:
-    """
-    Toma el texto del técnico y devuelve un objeto estructurado usando Gemini Pro.
-    """
-    print(f"\n[KVANetworks CRM] Procesando reporte con {MODEL_ID}...\n")
+# --- 1. ESTRUCTURA DE DATOS ---
+class ItemMaterial(BaseModel):
+    nombre_material: str = Field(description="Nombre del ítem (ej. 'Cámara IP 4MP').")
+    descripcion_detallada: str = Field(description="Descripción técnica y servicios incluidos.")
+    cantidad: float = Field(description="Cantidad solicitada")
+    unidad_medida: str = Field(description="Unidad (puntos, c/u, mt)")
+    precio_unitario_neto_estimado: float = Field(description="Precio unitario final CLP NETO calculado por la IA.")
+    justificacion_costo: str = Field(description="Breve desglose del precio unitario.")
+
+class LevantamientoTecnico(BaseModel):
+    resumen_proyecto: str = Field(description="Resumen breve del objetivo.")
+    materiales_y_servicios: list[ItemMaterial] = Field(description="Lista de ítems detectados.")
+    notas_adicionales: str = Field(description="Observaciones del técnico.")
+    sugerencia_margen: float = Field(description="Margen sugerido (ej: 0.35 para 35%)")
+    justificacion_margen: str = Field(description="Por qué sugieres este margen.")
+
+# --- 2. CONFIGURACIÓN GEMINI 3.1 PRO ---
+# Usamos el identificador experimental/preview para Gemini 3.1 Pro
+MODEL_ID = 'gemini-3.1-pro-preview' 
+
+def analizar_reporte_tecnico(texto: str, lista_precios: str = "") -> LevantamientoTecnico:
     client = get_client()
+    print(f"DEBUG: Procesando con {MODEL_ID}")
     
-    prompt_sistema = f"""
-Eres un asistente experto en redes, electricidad y sistemas CCTV para KVANetworks Chile.
-Tu trabajo es extraer materiales y servicios de reportes informales.
-
-**CEREBRO DE COSTOS (CRITICAL)**: 
-Si se menciona un 'Punto de red' o 'Cámara', calcula el costo TOTAL unitario sumando cable, conectores y mano de obra.
-
-**CATÁLOGO DE PRECIOS REALES**:
-{lista_precios_actual}
-Usa estos precios si coinciden.
-
-Todos los cálculos en CLP NETOS. Sugiere un margen comercial (ej. 30%).
+    prompt = f"""
+Eres un experto de KVANetworks Chile. Extrae materiales de este reporte.
+Calcula precios unitarios CLP NETOS incluyendo mano de obra si es necesario.
+CATÁLOGO: {lista_precios}
 """
     
-    respuesta = client.models.generate_content(
+    response = client.models.generate_content(
         model=MODEL_ID,
-        contents=texto_del_tecnico,
+        contents=texto,
         config={
             'response_mime_type': 'application/json',
             'response_schema': LevantamientoTecnico,
-            'system_instruction': prompt_sistema,
+            'system_instruction': prompt,
             'temperature': 0.1
-        },
+        }
     )
-    
-    if respuesta.parsed:
-        return respuesta.parsed
-    else:
-        raise Exception(f"La IA {MODEL_ID} no pudo estructurar la respuesta")
+    if response.parsed:
+        return response.parsed
+    raise Exception("Error al parsear respuesta de Gemini 3.1")
 
-def analizar_audio_tecnico(ruta_audio: str, lista_precios_actual: str = "") -> LevantamientoTecnico:
-    """
-    Sube un audio a Gemini Pro y extrae materiales estructurados.
-    """
-    print(f"\n[KVANetworks CRM] Analizando audio con {MODEL_ID}...\n")
+def analizar_audio_tecnico(ruta_audio: str, lista_precios: str = "") -> LevantamientoTecnico:
     client = get_client()
+    print(f"DEBUG: Analizando audio con {MODEL_ID}")
     
-    if not os.path.exists(ruta_audio):
-        raise FileNotFoundError(f"Archivo no encontrado: {ruta_audio}")
+    archivo_google = client.files.upload(file=ruta_audio)
+    
+    # Espera activa para procesamiento de audio
+    while archivo_google.state.name == "PROCESSING":
+        time.sleep(2)
+        archivo_google = client.files.get(name=archivo_google.name)
+    
+    if archivo_google.state.name == "FAILED":
+        raise Exception("Google no pudo procesar este archivo de audio.")
 
-    archivo_subido = None
+    prompt = "Escucha este audio de KVANetworks Chile y genera el JSON del levantamiento técnico. Precios en CLP NETOS."
+    
     try:
-        # 1. Subir archivo
-        print("📡 Subiendo audio...")
-        archivo_subido = client.files.upload(file=ruta_audio)
-        
-        # 2. ESPERAR A QUE ESTÉ ACTIVO
-        print("⏳ Esperando que Gemini procese el archivo...")
-        max_retries = 30
-        for _ in range(max_retries):
-            archivo_subido = client.files.get(name=archivo_subido.name)
-            if archivo_subido.state.name == "ACTIVE":
-                print("✅ Archivo listo.")
-                break
-            if archivo_subido.state.name == "FAILED":
-                raise Exception("El procesamiento del audio falló.")
-            time.sleep(2)
-        else:
-            raise Exception("Tiempo de espera agotado para el audio.")
-
-        prompt_sistema = f"""
-Eres un Ingeniero de Costos experto de KVANetworks Chile. Escucha el audio en español (es-CL).
-Extrae materiales y servicios. Calcula precio unitario sumando mano de obra.
-Resultados en CLP NETOS. Sugiere margen de utilidad.
-"""
-
-        respuesta = client.models.generate_content(
+        response = client.models.generate_content(
             model=MODEL_ID,
-            contents=["Extrae el levantamiento técnico de este audio:", archivo_subido],
+            contents=[prompt, archivo_google],
             config={
                 'response_mime_type': 'application/json',
                 'response_schema': LevantamientoTecnico,
-                'system_instruction': prompt_sistema,
                 'temperature': 0.1
-            },
+            }
         )
-        
-        if respuesta.parsed:
-            return respuesta.parsed
-        else:
-            raise Exception("La IA no pudo procesar el audio correctamente después de escucharlo")
-
+        if response.parsed:
+            return response.parsed
+        raise Exception("Gemini 3.1 no pudo estructurar el audio.")
     finally:
-        if archivo_subido:
-            try:
-                client.files.delete(name=archivo_subido.name)
-            except:
-                pass
-
-if __name__ == "__main__":
-    api_key = os.environ.get("GEMINI_API_KEY")
-    if not api_key:
-        print("⚠️ ERROR: Falta GEMINI_API_KEY.")
-    else:
-        print(f"Motor {MODEL_ID} listo.")
+        client.files.delete(name=archivo_google.name)
