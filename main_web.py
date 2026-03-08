@@ -4,8 +4,7 @@ from datetime import datetime
 import database as db
 
 # Importamos las herramientas del motor
-from traductor_ia import analizar_reporte_tecnico
-from traductor_ia_audio import analizar_audio_tecnico 
+from traductor_ia import analizar_reporte_tecnico, analizar_audio_tecnico 
 from generador_excel import crear_excel_cotizacion
 
 # Inicializar DB al arrancar
