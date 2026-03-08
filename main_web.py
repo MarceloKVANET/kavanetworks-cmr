@@ -4,7 +4,6 @@ from datetime import datetime
 import database as db
 
 # --- CARGAR API KEY DESDE SECRETS ---
-# Hacemos esto antes de importar traductor_ia para que ya esté disponible
 if "GEMINI_API_KEY" in st.secrets:
     os.environ["GEMINI_API_KEY"] = st.secrets["GEMINI_API_KEY"]
 elif os.path.exists(".env"):
@@ -15,37 +14,11 @@ elif os.path.exists(".env"):
 from traductor_ia import analizar_reporte_tecnico, analizar_audio_tecnico 
 from generador_excel import crear_excel_cotizacion
 
-# Inicializar DB al arrancar
+# Inicializar DB
 db.inicializar_db()
 
 # --- CONFIGURACIÓN DE PÁGINA ---
-st.set_page_config(
-    page_title="KVANetworks CRM",
-    page_icon="📶",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
-
-# --- ESTILOS PERSONALIZADOS ---
-st.markdown("""
-    <style>
-    .stApp { background-color: #f0f4f8; }
-    div[data-testid="stVerticalBlock"] div[data-testid="stVerticalBlock"] {
-        background-color: #ffffff;
-        border-radius: 10px;
-        padding: 1.5rem;
-        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
-    }
-    .stButton>button {
-        background-color: #04447c;
-        color: white;
-        border-radius: 8px;
-        font-weight: 600;
-        width: 100%;
-    }
-    h1, h2, h3 { color: #04447c; }
-    </style>
-""", unsafe_allow_html=True)
+st.set_page_config(page_title="KVANetworks CRM", page_icon="📶", layout="wide")
 
 # --- ESTADO DE SESIÓN ---
 if 'logueado' not in st.session_state:
@@ -72,19 +45,19 @@ with st.sidebar:
                     st.session_state.rol = "tecnico"
                     st.rerun()
                 else:
-                    st.error("Error")
+                    st.error("Credenciales incorrectas")
     else:
         st.success(f"Hola {st.session_state.usuario}")
-        opciones_menu = ["📦 Crear Cotización"]
+        opciones = ["📦 Crear Cotización"]
         if st.session_state.rol == "admin":
-            opciones_menu += ["🛠️ Catálogo de Precios", "📊 Historial"]
-        opcion = st.radio("Navegación", opciones_menu)
+            opciones += ["🛠️ Catálogo", "📊 Historial"]
+        opcion = st.radio("Menú", opciones)
         if st.button("Cerrar Sesión"):
             st.session_state.logueado = False
             st.rerun()
 
 if not st.session_state.logueado:
-    st.info("🔒 Inicie sesión para continuar")
+    st.info("🔒 Por favor, inicie sesión.")
     st.stop()
 
 # --- MÓDULO: CREAR COTIZACIÓN ---
@@ -94,71 +67,68 @@ if opcion == "📦 Crear Cotización":
     col_input, col_config = st.columns([1.5, 1], gap="large")
     
     with col_input:
-        with st.container(border=True):
-            st.subheader("1. Ingrese Datos")
-            reporte_texto = st.text_area("Texto del reporte (opcional)", height=150)
-            
-            st.divider()
-            # Usar una key para el uploader ayuda a la persistencia en Streamlit
-            audio_file = st.file_uploader("🎙️ Subir Audio", type=['mp3', 'wav', 'm4a'], key="audio_uploader")
-            
-            if audio_file:
-                st.success(f"✅ Archivo '{audio_file.name}' detectado y listo.")
-                st.audio(audio_file)
+        st.subheader("1. Ingrese Datos")
+        reporte_texto = st.text_area("Reporte escrito", height=150, placeholder="Escriba aquí si no usa audio...")
+        
+        st.divider()
+        audio_file = st.file_uploader("🎙️ Subir Nota de Voz", type=['mp3', 'wav', 'm4a'], key="audio_uploader")
+        
+        if audio_file:
+            st.success(f"✅ ARCHIVO DETECTADO: {audio_file.name}")
+            st.audio(audio_file)
+        else:
+            st.info("💡 Consejo: Asegúrate de ver el mensaje verde 'ARCHIVO DETECTADO' antes de procesar.")
 
     with col_config:
-        with st.container(border=True):
-            st.subheader("2. Configuración")
-            cliente_nombre = st.text_input("🏢 Cliente", placeholder="Nombre del cliente")
-            margen = st.slider("Margen (%)", 10, 100, 30)
-            
-            btn_procesar = st.button("🚀 GENERAR COTIZACIÓN", use_container_width=True)
+        st.subheader("2. Configuración")
+        cliente = st.text_input("🏢 Empresa/Cliente", placeholder="Ej: Condominio El Roble")
+        margen = st.slider("Margen de ganancia (%)", 10, 100, 30)
+        
+        st.write("---")
+        btn_procesar = st.button("🚀 GENERAR COTIZACIÓN", use_container_width=True)
+        
+        # DEBUG VISUAL PARA EL USUARIO (Solo aparece si hay duda)
+        if btn_procesar:
+            if not audio_file and not reporte_texto.strip():
+                st.error("❌ ERROR: No ingresaste texto ni subiste audio.")
+                st.write("**Estado Interno:**")
+                st.write(f"- Audio en memoria: {'SÍ' if audio_file else 'NO'}")
+                st.write(f"- Texto escrito: {'SÍ' if reporte_texto.strip() else 'NO'}")
 
     # --- LÓGICA DE PROCESAMIENTO ---
-    if btn_procesar:
-        # Debug visual para el usuario si algo falla
-        if not cliente_nombre:
-            st.warning("⚠️ Falta el nombre del cliente.")
-        elif not reporte_texto.strip() and audio_file is None:
-            st.error("❌ El sistema no detecta ni texto ni audio. Por favor sube el archivo de nuevo.")
-            # Debug oculto
-            st.write(f"DEBUG: Texto length={len(reporte_texto)}, Audio={audio_file}")
+    if btn_procesar and (audio_file or reporte_texto.strip()):
+        if not cliente:
+            st.warning("⚠️ Ingresa el nombre del cliente.")
         else:
-            with st.spinner("⏳ Procesando con IA Pro..."):
+            with st.spinner("⏳ KVANetworks IA Pro analizando..."):
                 try:
-                    if audio_file is not None:
-                        st.info("🎙️ Procesando Nota de Voz...")
-                        # Guardar temporalmente
-                        temp_path = f"temp_{datetime.now().timestamp()}.mp3"
-                        with open(temp_path, "wb") as f:
+                    # Determinamos qué procesar (Audio tiene prioridad)
+                    if audio_file:
+                        st.info(f"🎤 Analizando audio: {audio_file.name}")
+                        temp_name = f"temp_{int(datetime.now().timestamp())}.mp3"
+                        with open(temp_name, "wb") as f:
                             f.write(audio_file.getbuffer())
-                        
                         try:
-                            datos = analizar_audio_tecnico(temp_path)
+                            datos = analizar_audio_tecnico(temp_name)
                         finally:
-                            if os.path.exists(temp_path):
-                                os.remove(temp_path)
+                            if os.path.exists(temp_name): os.remove(temp_name)
                     else:
-                        st.info("📝 Procesando Texto...")
+                        st.info("📝 Analizando reporte de texto...")
                         datos = analizar_reporte_tecnico(reporte_texto)
                     
-                    # Generar Excel
-                    nombre_salida = f"cotizacion_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
-                    ruta = crear_excel_cotizacion(datos, nombre_salida)
-                    db.guardar_cotizacion_en_bd(datos, ruta)
+                    # Generación y DB
+                    nombre_xlsx = f"cotizacion_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+                    ruta_xlsx = crear_excel_cotizacion(datos, nombre_xlsx)
+                    db.guardar_cotizacion_en_bd(datos, ruta_xlsx)
                     
-                    st.success("✅ ¡Cotización Generada!")
+                    st.success("✅ ¡Cotización Creada!")
                     st.balloons()
-                    with open(ruta, "rb") as f:
-                        st.download_button("📥 Descargar Excel", f, file_name=nombre_salida)
+                    with open(ruta_xlsx, "rb") as f:
+                        st.download_button("📥 DESCARGAR EXCEL", f, file_name=nombre_xlsx)
                         
                 except Exception as e:
-                    st.error("❌ ERROR CRÍTICO")
-                    st.warning("Detalle para soporte:")
+                    st.error("❌ ERROR DE PROCESAMIENTO")
                     st.exception(e)
-                    # Verificar API Key en vivo
-                    api_check = os.environ.get("GEMINI_API_KEY")
-                    if not api_check:
-                        st.error("Error de Configuración: La API Key no está cargada en el servidor.")
-                    else:
-                        st.write(f"Info Técnica: API Key detectada ({api_check[:4]}...)")
+                    # Verificar si la API Key está presente en el error
+                    if "401" in str(e) or "API_KEY" in str(e):
+                        st.error("⚠️ Tu GEMINI_API_KEY parece no ser válida o no estar configurada.")
