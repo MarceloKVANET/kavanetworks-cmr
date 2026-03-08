@@ -6,6 +6,10 @@ from dotenv import load_dotenv
 
 # Cargaremos las variables de entorno del archivo .env
 load_dotenv()
+if not os.environ.get("GEMINI_API_KEY"):
+    import streamlit as st
+    if "GEMINI_API_KEY" in st.secrets:
+        os.environ["GEMINI_API_KEY"] = st.secrets["GEMINI_API_KEY"]
 
 # --- 1. DEFINIR LA ESTRUCTURA DE LOS DATOS ---
 class ItemMaterial(BaseModel):
