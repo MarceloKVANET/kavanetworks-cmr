@@ -10,6 +10,10 @@ from generador_excel import crear_excel_cotizacion
 # Inicializar DB al arrancar
 db.inicializar_db()
 
+# --- CARGAR API KEY DESDE SECRETS ---
+if "GEMINI_API_KEY" in st.secrets:
+    os.environ["GEMINI_API_KEY"] = st.secrets["GEMINI_API_KEY"]
+
 # --- CONFIGURACIÓN DE PÁGINA ---
 st.set_page_config(
     page_title="KVANetworks CRM",
