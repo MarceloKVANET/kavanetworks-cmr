@@ -3,16 +3,20 @@ import os
 from datetime import datetime
 import database as db
 
+# --- CARGAR API KEY DESDE SECRETS ---
+# Hacemos esto antes de importar traductor_ia para que ya esté disponible
+if "GEMINI_API_KEY" in st.secrets:
+    os.environ["GEMINI_API_KEY"] = st.secrets["GEMINI_API_KEY"]
+elif os.path.exists(".env"):
+    from dotenv import load_dotenv
+    load_dotenv()
+
 # Importamos las herramientas del motor
 from traductor_ia import analizar_reporte_tecnico, analizar_audio_tecnico 
 from generador_excel import crear_excel_cotizacion
 
 # Inicializar DB al arrancar
 db.inicializar_db()
-
-# --- CARGAR API KEY DESDE SECRETS ---
-if "GEMINI_API_KEY" in st.secrets:
-    os.environ["GEMINI_API_KEY"] = st.secrets["GEMINI_API_KEY"]
 
 # --- CONFIGURACIÓN DE PÁGINA ---
 st.set_page_config(
@@ -22,69 +26,41 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# --- ESTILOS PERSONALIZADOS (CSS AVANZADO) ---
+# --- ESTILOS PERSONALIZADOS ---
 st.markdown("""
     <style>
-    /* Fondo general más suave */
-    .stApp {
-        background-color: #f0f4f8;
-    }
-    
-    /* Estilo para los contenedores (Tarjetas) */
+    .stApp { background-color: #f0f4f8; }
     div[data-testid="stVerticalBlock"] div[data-testid="stVerticalBlock"] {
         background-color: #ffffff;
         border-radius: 10px;
         padding: 1.5rem;
         box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
     }
-    
-    /* Botón principal KVANetworks */
     .stButton>button {
         background-color: #04447c;
         color: white;
         border-radius: 8px;
-        border: none;
-        padding: 0.6rem 1.2rem;
         font-weight: 600;
-        transition: all 0.3s ease;
         width: 100%;
     }
-    .stButton>button:hover {
-        background-color: #03335e;
-        box-shadow: 0 4px 12px rgba(4, 68, 124, 0.3);
-        transform: translateY(-2px);
-    }
-    
-    /* Títulos corporativos */
-    h1, h2, h3 {
-        color: #04447c;
-        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-    }
-    
-    /* Ocultar elementos molestos por defecto de Streamlit */
-    #MainMenu {visibility: hidden;}
-    footer {visibility: hidden;}
+    h1, h2, h3 { color: #04447c; }
     </style>
 """, unsafe_allow_html=True)
 
-# --- AUTENTICACIÓN Y BARRA LATERAL ---
+# --- ESTADO DE SESIÓN ---
 if 'logueado' not in st.session_state:
     st.session_state.logueado = False
     st.session_state.usuario = None
     st.session_state.rol = None
 
+# --- BARRA LATERAL ---
 with st.sidebar:
-    st.image("https://img.icons8.com/ios-filled/100/04447c/infinity.png", width=80)
     st.title("KVANetworks")
-    st.caption("Sistema de Gestión Integrado")
-    st.divider()
-    
     if not st.session_state.logueado:
-        st.subheader("Acceso al Sistema")
         with st.form("login_form"):
             user = st.text_input("Usuario")
             pw = st.text_input("Contraseña", type="password")
-            if st.form_submit_button("Ingresar al CRM"):
+            if st.form_submit_button("Ingresar"):
                 if user == "admin" and pw == "kva2026":
                     st.session_state.logueado = True
                     st.session_state.usuario = "Marcelo"
@@ -96,110 +72,93 @@ with st.sidebar:
                     st.session_state.rol = "tecnico"
                     st.rerun()
                 else:
-                    st.error("Credenciales incorrectas")
+                    st.error("Error")
     else:
-        st.success(f"👋 Hola, **{st.session_state.usuario}**")
-        st.caption(f"Nivel de acceso: {st.session_state.rol.upper()}")
-        
-        st.divider()
+        st.success(f"Hola {st.session_state.usuario}")
         opciones_menu = ["📦 Crear Cotización"]
         if st.session_state.rol == "admin":
-            opciones_menu += ["🛠️ Catálogo de Precios", "👥 Clientes", "📊 Historial de Proyectos"]
-        
+            opciones_menu += ["🛠️ Catálogo de Precios", "📊 Historial"]
         opcion = st.radio("Navegación", opciones_menu)
-        
-        st.divider()
-        if st.button("🚪 Cerrar Sesión"):
+        if st.button("Cerrar Sesión"):
             st.session_state.logueado = False
             st.rerun()
 
-# --- VALIDACIÓN DE ACCESO ---
 if not st.session_state.logueado:
-    st.markdown("<br><br><br>", unsafe_allow_html=True)
-    col1, col2, col3 = st.columns([1,2,1])
-    with col2:
-        st.info("🔒 Bienvenido al portal de KVANetworks. Por favor, inicie sesión en el menú lateral izquierdo para acceder a sus herramientas.")
+    st.info("🔒 Inicie sesión para continuar")
     st.stop()
 
-# --- MÓDULO PRINCIPAL: CREAR COTIZACIÓN ---
+# --- MÓDULO: CREAR COTIZACIÓN ---
 if opcion == "📦 Crear Cotización":
-    st.title("📝 Nuevo Levantamiento Técnico")
-    st.markdown("Procesa audios de terreno o reportes escritos usando **Inteligencia Artificial**.")
-    st.write("") # Espaciador
+    st.title("📝 Nuevo Levantamiento")
     
-    col_input, col_config = st.columns([1.8, 1.2], gap="large")
+    col_input, col_config = st.columns([1.5, 1], gap="large")
     
     with col_input:
         with st.container(border=True):
-            st.subheader("1. Ingreso de Datos")
-            st.write("Escriba el reporte o suba la nota de voz del técnico:")
-            
-            reporte_texto = st.text_area(
-                "Texto del requerimiento (Opcional si sube audio)", 
-                placeholder="Ej: Necesitamos instalar 10 puntos de red cat6...",
-                height=150,
-                label_visibility="collapsed"
-            )
+            st.subheader("1. Ingrese Datos")
+            reporte_texto = st.text_area("Texto del reporte (opcional)", height=150)
             
             st.divider()
+            # Usar una key para el uploader ayuda a la persistencia en Streamlit
+            audio_file = st.file_uploader("🎙️ Subir Audio", type=['mp3', 'wav', 'm4a'], key="audio_uploader")
             
-            audio_file = st.file_uploader("🎙️ Subir nota de voz (MP3, M4A, WAV)", type=['mp3', 'wav', 'm4a'])
             if audio_file:
-                st.success(f"✅ Audio cargado correctamente ({audio_file.size/1024:.0f} KB)")
+                st.success(f"✅ Archivo '{audio_file.name}' detectado y listo.")
                 st.audio(audio_file)
 
     with col_config:
         with st.container(border=True):
-            st.subheader("2. Parámetros Comerciales")
-            cliente_nombre = st.text_input("🏢 Cliente / Empresa", placeholder="Ej: Constructora San José")
+            st.subheader("2. Configuración")
+            cliente_nombre = st.text_input("🏢 Cliente", placeholder="Nombre del cliente")
+            margen = st.slider("Margen (%)", 10, 100, 30)
             
-            st.write("📈 Margen de Utilidad Sugerido")
-            margen_manual = st.slider("Porcentaje de recargo sobre el costo neto", min_value=10, max_value=100, value=30, step=5, format="%d%%")
-            
-            st.write("") # Espaciador
-            st.write("")
-            btn_procesar = st.button("🚀 PROCESAR Y GENERAR COTIZACIÓN", use_container_width=True)
-            
-    # Lógica de procesamiento
+            btn_procesar = st.button("🚀 GENERAR COTIZACIÓN", use_container_width=True)
+
+    # --- LÓGICA DE PROCESAMIENTO ---
     if btn_procesar:
+        # Debug visual para el usuario si algo falla
         if not cliente_nombre:
-            st.error("⚠️ Ingrese el nombre del Cliente para continuar.")
-        elif not reporte_texto and not audio_file:
-            st.error("⚠️ Debe ingresar un texto o subir un archivo de audio.")
+            st.warning("⚠️ Falta el nombre del cliente.")
+        elif not reporte_texto.strip() and audio_file is None:
+            st.error("❌ El sistema no detecta ni texto ni audio. Por favor sube el archivo de nuevo.")
+            # Debug oculto
+            st.write(f"DEBUG: Texto length={len(reporte_texto)}, Audio={audio_file}")
         else:
-            with st.spinner("🧠 KVANetworks IA analizando el requerimiento..."):
+            with st.spinner("⏳ Procesando con IA Pro..."):
                 try:
-                    # IA
-                    if audio_file:
-                        # Guardar temporalmente para procesar
-                        with open("temp_audio.mp3", "wb") as f:
+                    if audio_file is not None:
+                        st.info("🎙️ Procesando Nota de Voz...")
+                        # Guardar temporalmente
+                        temp_path = f"temp_{datetime.now().timestamp()}.mp3"
+                        with open(temp_path, "wb") as f:
                             f.write(audio_file.getbuffer())
-                        datos_estructurados = analizar_audio_tecnico("temp_audio.mp3")
-                        os.remove("temp_audio.mp3")
+                        
+                        try:
+                            datos = analizar_audio_tecnico(temp_path)
+                        finally:
+                            if os.path.exists(temp_path):
+                                os.remove(temp_path)
                     else:
-                        datos_estructurados = analizar_reporte_tecnico(reporte_texto)
+                        st.info("📝 Procesando Texto...")
+                        datos = analizar_reporte_tecnico(reporte_texto)
                     
                     # Generar Excel
                     nombre_salida = f"cotizacion_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
-                    ruta_absoluta = crear_excel_cotizacion(datos_estructurados, nombre_salida)
+                    ruta = crear_excel_cotizacion(datos, nombre_salida)
+                    db.guardar_cotizacion_en_bd(datos, ruta)
                     
-                    # Guardar en DB
-                    id_cotizacion = db.guardar_cotizacion_en_bd(datos_estructurados, ruta_absoluta)
-                    
-                    st.success(f"✅ Cotización #{id_cotizacion} generada con éxito!")
+                    st.success("✅ ¡Cotización Generada!")
                     st.balloons()
-                    
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        with open(ruta_absoluta, "rb") as file:
-                            st.download_button(
-                                label="📥 Descargar Excel",
-                                data=file,
-                                file_name=nombre_salida,
-                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                            )
-                    with col2:
-                        st.info(f"📍 Archivo guardado en: {ruta_absoluta}")
-
+                    with open(ruta, "rb") as f:
+                        st.download_button("📥 Descargar Excel", f, file_name=nombre_salida)
+                        
                 except Exception as e:
-                    st.error(f"❌ Error en el procesamiento: {str(e)}")
+                    st.error("❌ ERROR CRÍTICO")
+                    st.warning("Detalle para soporte:")
+                    st.exception(e)
+                    # Verificar API Key en vivo
+                    api_check = os.environ.get("GEMINI_API_KEY")
+                    if not api_check:
+                        st.error("Error de Configuración: La API Key no está cargada en el servidor.")
+                    else:
+                        st.write(f"Info Técnica: API Key detectada ({api_check[:4]}...)")
