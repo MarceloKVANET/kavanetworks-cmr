@@ -1,9 +1,12 @@
 import streamlit as st
 import os
-from traductor_ia import analizar_reporte_tecnico, analizar_audio_tecnico
-from generador_excel import crear_excel_cotizacion
 from datetime import datetime
 import database as db
+
+# Importamos las herramientas del motor
+from traductor_ia import analizar_reporte_tecnico
+from traductor_ia_audio import analizar_audio_tecnico 
+from generador_excel import crear_excel_cotizacion
 
 # Inicializar DB al arrancar
 db.inicializar_db()
@@ -12,47 +15,73 @@ db.inicializar_db()
 st.set_page_config(
     page_title="KVANetworks CRM",
     page_icon="📶",
-    layout="wide"
+    layout="wide",
+    initial_sidebar_state="expanded"
 )
 
-# --- ESTILOS PERSONALIZADOS (SITEI INSPIRATION) ---
+# --- ESTILOS PERSONALIZADOS (CSS AVANZADO) ---
 st.markdown("""
     <style>
-    .main {
-        background-color: #f8f9fa;
+    /* Fondo general más suave */
+    .stApp {
+        background-color: #f0f4f8;
     }
+    
+    /* Estilo para los contenedores (Tarjetas) */
+    div[data-testid="stVerticalBlock"] div[data-testid="stVerticalBlock"] {
+        background-color: #ffffff;
+        border-radius: 10px;
+        padding: 1.5rem;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+    }
+    
+    /* Botón principal KVANetworks */
     .stButton>button {
         background-color: #04447c;
         color: white;
-        border-radius: 5px;
+        border-radius: 8px;
         border: none;
-        padding: 0.5rem 1rem;
+        padding: 0.6rem 1.2rem;
+        font-weight: 600;
+        transition: all 0.3s ease;
+        width: 100%;
     }
-    .stHeader {
+    .stButton>button:hover {
+        background-color: #03335e;
+        box-shadow: 0 4px 12px rgba(4, 68, 124, 0.3);
+        transform: translateY(-2px);
+    }
+    
+    /* Títulos corporativos */
+    h1, h2, h3 {
         color: #04447c;
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     }
+    
+    /* Ocultar elementos molestos por defecto de Streamlit */
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
     </style>
 """, unsafe_allow_html=True)
 
-# --- CABECERA ---
-st.title("📶 KVANetworks CRM")
-st.subheader("Sistema Inteligente de Cotizaciones: Telecomunicaciones & Electricidad")
-
-# --- AUTENTICACIÓN ---
+# --- AUTENTICACIÓN Y BARRA LATERAL ---
 if 'logueado' not in st.session_state:
     st.session_state.logueado = False
     st.session_state.usuario = None
     st.session_state.rol = None
 
 with st.sidebar:
-    st.image("https://img.icons8.com/ios-filled/100/04447c/infinity.png", width=100)
-    st.title("Acceso KVANetworks")
+    st.image("https://img.icons8.com/ios-filled/100/04447c/infinity.png", width=80)
+    st.title("KVANetworks")
+    st.caption("Sistema de Gestión Integrado")
+    st.divider()
     
     if not st.session_state.logueado:
+        st.subheader("Acceso al Sistema")
         with st.form("login_form"):
             user = st.text_input("Usuario")
             pw = st.text_input("Contraseña", type="password")
-            if st.form_submit_button("Ingresar"):
+            if st.form_submit_button("Ingresar al CRM"):
                 if user == "admin" and pw == "kva2026":
                     st.session_state.logueado = True
                     st.session_state.usuario = "Marcelo"
@@ -66,146 +95,76 @@ with st.sidebar:
                 else:
                     st.error("Credenciales incorrectas")
     else:
-        st.write(f"Hola, **{st.session_state.usuario}**")
-        st.write(f"Rol: `{st.session_state.rol.upper()}`")
-        if st.button("Cerrar Sesión"):
-            st.session_state.logueado = False
-            st.rerun()
+        st.success(f"👋 Hola, **{st.session_state.usuario}**")
+        st.caption(f"Nivel de acceso: {st.session_state.rol.upper()}")
         
         st.divider()
-        st.title("Panel de Control")
         opciones_menu = ["📦 Crear Cotización"]
         if st.session_state.rol == "admin":
-            opciones_menu += ["🛠️ Inventario & Precios", "👥 Clientes", "📊 Historial"]
+            opciones_menu += ["🛠️ Catálogo de Precios", "👥 Clientes", "📊 Historial de Proyectos"]
         
-        opcion = st.radio("Menu", opciones_menu)
+        opcion = st.radio("Navegación", opciones_menu)
+        
+        st.divider()
+        if st.button("🚪 Cerrar Sesión"):
+            st.session_state.logueado = False
+            st.rerun()
 
-# --- MÓDULO PRINCIPAL: CREAR COTIZACIÓN ---
-# --- MÓDULO PRINCIPAL: CREAR COTIZACIÓN ---
+# --- VALIDACIÓN DE ACCESO ---
 if not st.session_state.logueado:
-    st.warning("🔒 Por favor, inicie sesión en la barra lateral para usar el sistema.")
+    st.markdown("<br><br><br>", unsafe_allow_html=True)
+    col1, col2, col3 = st.columns([1,2,1])
+    with col2:
+        st.info("🔒 Bienvenido al portal de KVANetworks. Por favor, inicie sesión en el menú lateral izquierdo para acceder a sus herramientas.")
     st.stop()
 
+# --- MÓDULO PRINCIPAL: CREAR COTIZACIÓN ---
 if opcion == "📦 Crear Cotización":
-    st.header("📝 Nuevo Levantamiento Técnico")
+    st.title("📝 Nuevo Levantamiento Técnico")
+    st.markdown("Procesa audios de terreno o reportes escritos usando **Inteligencia Artificial**.")
+    st.write("") # Espaciador
     
-    col1, col2 = st.columns([2, 1])
+    col_input, col_config = st.columns([1.8, 1.2], gap="large")
     
-    with col1:
-        st.write("Escriba o pegue el reporte enviado por el técnico:")
-        reporte_texto = st.text_area(
-            "Reporte de Terreno", 
-            placeholder="Ej: Instalar 10 puntos de red cat6 en bodega...",
-            height=200
-        )
-        
-        # Opción de Audio (Simulada en esta fase de interfaz)
-        audio_file = st.file_uploader("📥 O subir nota de voz del técnico", type=['mp3', 'wav', 'm4a'])
-        if audio_file:
-            st.success(f"✅ Archivo '{audio_file.name}' listo para procesar ({audio_file.size/1024:.1f} KB)")
-            st.audio(audio_file)
-
-    with col2:
-        st.write("Configuración de Cotización")
-        cliente_nombre = st.text_input("Nombre del Cliente/Empresa", placeholder="Ej: Minera San José")
-        margen_manual = st.slider("Margen de Utilidad Sugerido (%)", 0, 100, 30)
-        
-    if st.button("🚀 PROCESAR CON IA Y GENERAR EXCEL"):
-        if not cliente_nombre:
-            st.error("⚠️ El nombre del Cliente/Empresa es OBLIGATORIO para generar la cotización.")
-        elif not reporte_texto and not audio_file:
-            st.error("⚠️ Por favor, ingrese un reporte de texto o suba un archivo de audio.")
-        else:
-            with st.spinner("🧠 KVANetworks IA trabajando..."):
-                try:
-                    # 0. Preparar catálogo de precios para la IA
-                    productos = db.listar_productos()
-                    contexto_precios = "\n".join([f"- {p['nombre']}: ${p['precio_neto']} por {p['unidad']}" for p in productos])
-                    
-                    # 1. Ejecutar IA (Texto o Audio)
-                    if audio_file:
-                        # Guardar temporalmente para que Gemini pueda leerlo
-                        temp_path = f"temp_{audio_file.name}"
-                        with open(temp_path, "wb") as f:
-                            f.write(audio_file.getbuffer())
-                        datos = analizar_audio_tecnico(temp_path, lista_precios_actual=contexto_precios)
-                        os.remove(temp_path) # Limpiar
-                    else:
-                        datos = analizar_reporte_tecnico(reporte_texto, lista_precios_actual=contexto_precios)
-                    
-                    st.success("¡Análisis completado!")
-                    
-                    # Mostrar vista previa
-                    st.write("### 📋 Vista Previa de la Cotización")
-                    st.info(f"**Resumen:** {datos.resumen_proyecto}")
-                    
-                    # Tabla de materiales
-                    st.table([
-                        {"Material": m.nombre_material, "Cantidad": m.cantidad, "Neto Est.": m.precio_unitario_neto_estimado}
-                        for m in datos.materiales_y_servicios
-                    ])
-                    
-                    st.write(f"**Justificación IA:** {datos.justificacion_margen}")
-                    
-                    # 2. Generar Excel (Usando el margen manual del slider)
-                    filename = f"cotizacion_{cliente_nombre.replace(' ', '_')}_{datetime.now().strftime('%Y%m%d')}.xlsx"
-                    ruta = crear_excel_cotizacion(datos, filename, margen_override=margen_manual/100)
-                    
-                    # 3. Botón de Descarga
-                    with open(ruta, "rb") as file:
-                        st.download_button(
-                            label="📥 DESCARGAR EXCEL DE COTIZACIÓN",
-                            data=file,
-                            file_name=filename,
-                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                        )
-                except Exception as e:
-                    st.error(f"Falla en el sistema: {e}")
-
-# --- MÓDULO INVENTARIO & PRECIOS ---
-elif opcion == "🛠️ Inventario & Precios":
-    st.header("🛠️ Gestión de Inventario y Precios Base")
-    
-    with st.expander("➕ Agregar Nuevo Producto/Servicio"):
-        with st.form("nuevo_producto"):
-            col1, col2 = st.columns(2)
-            with col1:
-                p_nombre = st.text_input("Nombre del Producto", placeholder="Ej: Cámara IP Domo 4MP")
-                p_unidad = st.selectbox("Unidad", ["unidades", "mt", "puntos", "global", "día/técnico"])
-            with col2:
-                p_precio = st.number_input("Precio Neto ($)", min_value=0.0, step=100.0)
-                p_desc = st.text_input("Descripción Corta")
+    with col_input:
+        with st.container(border=True):
+            st.subheader("1. Ingreso de Datos")
+            st.write("Escriba el reporte o suba la nota de voz del técnico:")
             
-            if st.form_submit_button("Guardar en Catálogo"):
-                if p_nombre:
-                    db.agregar_producto(p_nombre, p_desc, p_precio, p_unidad)
-                    st.success(f"¡{p_nombre} agregado correctamente!")
-                    st.rerun()
-                else:
-                    st.error("El nombre es obligatorio")
+            reporte_texto = st.text_area(
+                "Texto del requerimiento (Opcional si sube audio)", 
+                placeholder="Ej: Necesitamos instalar 10 puntos de red cat6...",
+                height=150,
+                label_visibility="collapsed"
+            )
+            
+            st.divider()
+            
+            audio_file = st.file_uploader("🎙️ Subir nota de voz (MP3, M4A, WAV)", type=['mp3', 'wav', 'm4a'])
+            if audio_file:
+                st.success(f"✅ Audio cargado correctamente ({audio_file.size/1024:.0f} KB)")
+                st.audio(audio_file)
 
-    st.write("### Catálogo de Precios Actual")
-    productos = db.listar_productos()
-    if productos:
-        tabla_prod = []
-        for p in productos:
-            tabla_prod.append({
-                "ID": p["id"],
-                "Nombre": p["nombre"],
-                "Descripción": p["descripcion"],
-                "Precio Neto": f"${p['precio_neto']:,.0f}",
-                "Unidad": p["unidad"]
-            })
-        st.table(tabla_prod)
-    else:
-        st.info("Aún no hay productos cargados. Usa el formulario de arriba para empezar.")
-
-# --- MÓDULO CLIENTES (PRÓXIMAMENTE) ---
-elif opcion == "👥 Clientes":
-    st.header("👥 Gestión de Clientes")
-    st.info("Este módulo estará disponible en la Fase 4 para guardar tu base de datos de clientes.")
-
-# --- MÓDULO HISTORIAL (PRÓXIMAMENTE) ---
-elif opcion == "📊 Historial":
-    st.header("📊 Historial de Cotizaciones")
-    st.write("Aquí podrás ver todas las cotizaciones enviadas anteriormente.")
+    with col_config:
+        with st.container(border=True):
+            st.subheader("2. Parámetros Comerciales")
+            cliente_nombre = st.text_input("🏢 Cliente / Empresa", placeholder="Ej: Constructora San José")
+            
+            st.write("📈 Margen de Utilidad Sugerido")
+            margen_manual = st.slider("Porcentaje de recargo sobre el costo neto", min_value=10, max_value=100, value=30, step=5, format="%d%%")
+            
+            st.write("") # Espaciador
+            st.write("")
+            btn_procesar = st.button("🚀 PROCESAR Y GENERAR COTIZACIÓN", use_container_width=True)
+            
+    # Lógica de procesamiento
+    if btn_procesar:
+        if not cliente_nombre:
+            st.error("⚠️ Ingrese el nombre del Cliente para continuar.")
+        elif not reporte_texto and not audio_file:
+            st.error("⚠️ Debe ingresar un texto o subir un archivo de audio.")
+        else:
+            with st.spinner("🧠 KVANetworks IA analizando el requerimiento..."):
+                try:
+                    # IA
+                    if audio

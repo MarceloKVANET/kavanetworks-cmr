@@ -3,10 +3,10 @@ from google import genai
 from pydantic import BaseModel, Field
 from dotenv import load_dotenv
 
-# Cargaremos las variables de entorno
+# Cargamos las variables de entorno
 load_dotenv()
 
-# --- 1. DEFINICIÓN DE ESTRUCTURA (Idéntica a la anterior) ---
+# --- 1. DEFINICIÓN DE ESTRUCTURA ---
 class ItemMaterial(BaseModel):
     nombre_material: str = Field(description="Nombre descriptivo del material, equipo o servicio solicitado")
     cantidad: float = Field(description="Cantidad solicitada. Si no se especifica, usar 1.0")
@@ -20,49 +20,57 @@ class LevantamientoTecnico(BaseModel):
 # --- 2. CONFIGURAR EL MOTOR DE IA PARA AUDIO ---
 def analizar_audio_tecnico(ruta_audio: str) -> LevantamientoTecnico:
     """
-    Sube un archivo de audio (MP3, WAV, M4A) a Gemini y extrae los materiales estructurados.
+    Sube un archivo de audio a Gemini, extrae los materiales, y luego borra el archivo de la nube.
     """
-    print(f"\n[KVANetworks CRM] Procesando archivo de audio ({ruta_audio}) con Inteligencia Artificial...\n")
+    print(f"\n[KVANetworks CRM] Procesando audio ({ruta_audio}) con Inteligencia Artificial...\n")
     
+    # Seguro anti-errores: Verificar que el archivo realmente exista en tu PC
+    if not os.path.exists(ruta_audio):
+        raise FileNotFoundError(f"No se encontró el archivo de audio. Revisa que '{ruta_audio}' esté en la carpeta correcta.")
+
     client = genai.Client()
+    archivo_subido = None
     
-    # Paso A: Subir el archivo de audio a la nube de Gemini temporalmente
-    print("📡 Subiendo audio para análisis...")
-    # Soportado: mp3, mp4, mpeg, mpga, m4a, wav, webm
-    archivo_subido = client.files.upload(file=ruta_audio)
-    print("✅ Audio subido correctamente. Escuchando...")
-    
-    prompt_sistema = """
-Eres un asistente experto en redes, electricidad y sistemas CCTV. 
-Trabajas para la empresa KVANetworks.
-Tu trabajo es escuchar la nota de voz del técnico en terreno y extraer de forma 
-ordenada y precisa todos los materiales y servicios solicitados para armar una cotización formal.
-Asegúrate de deducir unidades lógicas si el técnico es ambiguo.
-"""
-    
-    # Paso B: Pedirle a Gemini que extraiga la información del archivo subido
-    respuesta = client.models.generate_content(
-        model='gemini-2.5-flash',
-        contents=["Por favor extrae los materiales mencionados en este audio:", archivo_subido],
-        config={
-            'response_mime_type': 'application/json',
-            'response_schema': LevantamientoTecnico,
-            'system_instruction': prompt_sistema,
-            'temperature': 0.1
-        },
-    )
-    
-    # La respuesta viene en el formato de nuestra clase Pydantic
-    if respuesta.parsed:
-      return respuesta.parsed
-    else:
-        raise Exception("La IA no pudo estructurar la respuesta del audio")
+    try:
+        # Paso A: Subir el archivo de audio
+        print("📡 Subiendo audio de forma segura...")
+        archivo_subido = client.files.upload(file=ruta_audio)
+        print("✅ Audio subido correctamente. Escuchando y analizando...")
+        
+        prompt_sistema = """
+        Eres un asistente experto en redes, electricidad y sistemas CCTV. 
+        Trabajas para la empresa KVANetworks.
+        Tu trabajo es escuchar la nota de voz del técnico en terreno y extraer de forma 
+        ordenada y precisa todos los materiales y servicios solicitados para armar una cotización formal.
+        Asegúrate de deducir unidades lógicas si el técnico es ambiguo.
+        """
+        
+        # Paso B: Usar el modelo PRO para máxima precisión
+        respuesta = client.models.generate_content(
+            model='gemini-2.5-pro',
+            contents=["Por favor extrae los materiales mencionados en este audio:", archivo_subido],
+            config={
+                'response_mime_type': 'application/json',
+                'response_schema': LevantamientoTecnico,
+                'system_instruction': prompt_sistema,
+                'temperature': 0.1
+            },
+        )
+        
+        if respuesta.parsed:
+            return respuesta.parsed
+        else:
+            raise Exception("La IA no pudo estructurar la respuesta del audio")
+
+    finally:
+        # Paso C: LIMPIEZA OBLIGATORIA (Se ejecuta siempre, incluso si hay un error)
+        if archivo_subido:
+            print("🧹 Limpiando servidores: Borrando audio temporal de la nube...")
+            client.files.delete(name=archivo_subido.name)
 
 if __name__ == "__main__":
     if not os.environ.get("GEMINI_API_KEY"):
         print("⚠️ ERROR: Falta configurar tu 'GEMINI_API_KEY' en el archivo .env")
     else:
-        print("💡 Instrucciones de prueba de audio:")
-        print("Para probar esto en la vida real, necesitas colocar un archivo de audio (ej: 'terreno1.mp3')")
-        print("en esta misma carpeta y pasarle la ruta a la función analizar_audio_tecnico().")
-        print("\nEl código ya está 100% preparado para escuchar.")
+        print("💡 El módulo de audio está listo y optimizado.")
+        print("Para probarlo, llama a la función analizar_audio_tecnico('nombre_del_audio.mp3')")
