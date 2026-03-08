@@ -8,35 +8,36 @@ def get_client():
     api_key = os.environ.get("GEMINI_API_KEY")
     if not api_key:
         import streamlit as st
+        # Carga forzosa desde secrets en producción
         if "GEMINI_API_KEY" in st.secrets:
             api_key = st.secrets["GEMINI_API_KEY"]
             os.environ["GEMINI_API_KEY"] = api_key
         else:
-            raise ValueError("GEMINI_API_KEY NOT FOUND")
+            raise ValueError("LLAVE API NO CONFIGURADA")
     return genai.Client(api_key=api_key)
 
+# Esqueleto de datos
 class ItemMaterial(BaseModel):
-    nombre_material: str = Field(description="Nombre del material")
-    descripcion_detallada: str = Field(description="Descripción")
-    cantidad: float = Field(description="Cantidad")
+    nombre_material: str = Field(description="Nombre")
+    descripcion_detallada: str = Field(description="Detalle")
+    cantidad: float = Field(description="Cant")
     unidad_medida: str = Field(description="Unidad")
-    precio_unitario_neto_estimado: float = Field(description="Precio CLP")
+    precio_unitario_neto_estimado: float = Field(description="Precio")
     justificacion_costo: str = Field(description="Justificación")
 
 class LevantamientoTecnico(BaseModel):
     resumen_proyecto: str = Field(description="Resumen")
-    materiales_y_servicios: list[ItemMaterial] = Field(description="Materiales")
+    materiales_y_servicios: list[ItemMaterial] = Field(description="Items")
     notas_adicionales: str = Field(description="Notas")
     sugerencia_margen: float = Field(description="Margen")
-    justificacion_margen: str = Field(description="Justificación margen")
+    justificacion_margen: str = Field(description="Justificación")
 
-MODEL_ID = 'gemini-1.5-pro'
+# USAMOS FLASH PORQUE PRO DA 404 EN ESTE SDK/ENTORNO
+MODEL_ID = 'gemini-1.5-flash' 
 
 def analizar_reporte_tecnico(texto: str, lista_precios: str = "") -> LevantamientoTecnico:
     client = get_client()
-    print(f"DEBUG: Processing text with {MODEL_ID}")
-    
-    prompt = f"Extrae materiales de este reporte: {texto}. Responde en JSON basado en el esquema."
+    print(f"DEBUG: Enviando a {MODEL_ID}")
     
     try:
         response = client.models.generate_content(
@@ -45,28 +46,20 @@ def analizar_reporte_tecnico(texto: str, lista_precios: str = "") -> Levantamien
             config={
                 'response_mime_type': 'application/json',
                 'response_schema': LevantamientoTecnico,
-                'system_instruction': f"Eres un experto de KVANetworks Chile. Precios en CLP NETOS. CATALOGO: {lista_precios}",
+                'system_instruction': f"Experto KVANetworks Chile. CLP NETO. {lista_precios}",
                 'temperature': 0.1
             }
         )
-        
-        if response.parsed:
-            return response.parsed
-        
-        # Fallback manual si .parsed falla (a veces pasa en SDKs antiguos o respuestas raras)
-        if response.text:
-            cleaned_json = response.text.replace("```json", "").replace("```", "").strip()
-            data = json.loads(cleaned_json)
-            return LevantamientoTecnico(**data)
-            
-        raise Exception("Sin respuesta de la IA")
+        if response.parsed: return response.parsed
+        # Fallback si .parsed falla
+        return LevantamientoTecnico(**json.loads(response.text))
     except Exception as e:
-        print(f"ERROR IA TEXTO: {str(e)}")
+        print(f"ERROR TEXTO: {e}")
         raise e
 
 def analizar_audio_tecnico(ruta_audio: str, lista_precios: str = "") -> LevantamientoTecnico:
     client = get_client()
-    print(f"DEBUG: Uploading audio {ruta_audio}")
+    print(f"DEBUG: Subiendo audio a {MODEL_ID}")
     
     try:
         archivo_google = client.files.upload(file=ruta_audio)
@@ -76,11 +69,11 @@ def analizar_audio_tecnico(ruta_audio: str, lista_precios: str = "") -> Levantam
             archivo_google = client.files.get(name=archivo_google.name)
             
         if archivo_google.state.name != "ACTIVE":
-            raise Exception(f"Fallo carga: {archivo_google.state.name}")
+            raise Exception("Archivo fallido en Google")
 
         response = client.models.generate_content(
             model=MODEL_ID,
-            contents=["Escucha y extrae materiales en JSON:", archivo_google],
+            contents=["Extrae JSON del audio:", archivo_google],
             config={
                 'response_mime_type': 'application/json',
                 'response_schema': LevantamientoTecnico,
@@ -88,17 +81,12 @@ def analizar_audio_tecnico(ruta_audio: str, lista_precios: str = "") -> Levantam
             }
         )
         
-        client.files.delete(name=archivo_google.name)
+        # Limpieza
+        try: client.files.delete(name=archivo_google.name)
+        except: pass
 
-        if response.parsed:
-            return response.parsed
-        
-        if response.text:
-            cleaned_json = response.text.replace("```json", "").replace("```", "").strip()
-            data = json.loads(cleaned_json)
-            return LevantamientoTecnico(**data)
-
-        raise Exception("IA no pudo procesar el audio")
+        if response.parsed: return response.parsed
+        return LevantamientoTecnico(**json.loads(response.text))
     except Exception as e:
-        print(f"ERROR IA AUDIO: {str(e)}")
+        print(f"ERROR AUDIO: {e}")
         raise e
