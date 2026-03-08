@@ -167,4 +167,36 @@ if opcion == "📦 Crear Cotización":
             with st.spinner("🧠 KVANetworks IA analizando el requerimiento..."):
                 try:
                     # IA
-                    if audio
+                    if audio_file:
+                        # Guardar temporalmente para procesar
+                        with open("temp_audio.mp3", "wb") as f:
+                            f.write(audio_file.getbuffer())
+                        datos_estructurados = analizar_audio_tecnico("temp_audio.mp3")
+                        os.remove("temp_audio.mp3")
+                    else:
+                        datos_estructurados = analizar_reporte_tecnico(reporte_texto)
+                    
+                    # Generar Excel
+                    nombre_salida = f"cotizacion_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+                    ruta_absoluta = crear_excel_cotizacion(datos_estructurados, nombre_salida)
+                    
+                    # Guardar en DB
+                    id_cotizacion = db.guardar_cotizacion_en_bd(datos_estructurados, ruta_absoluta)
+                    
+                    st.success(f"✅ Cotización #{id_cotizacion} generada con éxito!")
+                    st.balloons()
+                    
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        with open(ruta_absoluta, "rb") as file:
+                            st.download_button(
+                                label="📥 Descargar Excel",
+                                data=file,
+                                file_name=nombre_salida,
+                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                            )
+                    with col2:
+                        st.info(f"📍 Archivo guardado en: {ruta_absoluta}")
+
+                except Exception as e:
+                    st.error(f"❌ Error en el procesamiento: {str(e)}")
